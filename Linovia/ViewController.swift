@@ -117,11 +117,21 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
+        let bannerContainer = UIView()
+        bannerContainer.translatesAutoresizingMaskIntoConstraints = false
+        bannerContainer.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
+        view.addSubview(bannerContainer)
+
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: bannerContainer.topAnchor),
+
+            bannerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bannerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bannerContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            bannerContainer.heightAnchor.constraint(equalToConstant: 50)
         ])
     }
 

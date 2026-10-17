@@ -50,10 +50,11 @@
     localStorage.setItem('linovia_hints', hints);
   }
 
-  // Ensure all 100 levels unlocked for seamless testing & playing
+  // Default to Level 1 for fresh installs (unlocks level-by-level)
   var storedProgress = parseInt(localStorage.getItem('yellowpipes_strg'), 10);
-  if (isNaN(storedProgress) || storedProgress < 100) {
-    localStorage.setItem('yellowpipes_strg', '100');
+  if (isNaN(storedProgress) || storedProgress < 1) {
+    storedProgress = 1;
+    localStorage.setItem('yellowpipes_strg', '1');
   }
 
   var lastLevelWon = null;
@@ -308,8 +309,8 @@
 
   /**
    * Robust Win Detection:
-   * 1. ALL pipes with isNeeded === 1 MUST match their target orientation.
-   * 2. Physical water flow starting at Start Destin MUST reach End Destin with matching port.
+   * Physical water/signal flow starting at Start Destin MUST reach End Destin with matching port.
+   * Any valid connected path is 100% accepted!
    */
   function checkBoardSolvability(runtime) {
     if (!runtime || !runtime.running_layout) return false;
@@ -326,17 +327,7 @@
     var startInfo = data.startInfo;
     var endInfo = data.endInfo;
 
-    // 1. ALL needed pipes MUST match target orientation
-    for (var k in board) {
-      var cell = board[k];
-      if (cell.isNeeded === 1) {
-        if (!isPipeOrientationCorrect(cell)) {
-          return false;
-        }
-      }
-    }
-
-    // 2. Physical flow from Start Destin to End Destin
+    // Physical flow from Start Destin to End Destin
     var curKey = startInfo.cell;
     var curEntry = startInfo.port;
     var maxSteps = Object.keys(board).length * 4;
@@ -363,6 +354,22 @@
     if (reachedEnd) {
       runtime.running_layout._linovia_won = true;
       console.log('[Linovia Pro] Valid complete connection detected! Triggering win...');
+
+      // Update saved progress to next level
+      var curLvl = parseInt(layoutName.replace('Level', ''), 10);
+      if (!isNaN(curLvl)) {
+        var nextLvl = curLvl + 1;
+        var curProg = parseInt(localStorage.getItem('yellowpipes_strg') || '1', 10);
+        if (nextLvl > curProg) {
+          localStorage.setItem('yellowpipes_strg', nextLvl.toString());
+          var progVar = runtime.getEventVariableByName('progressLevel');
+          if (progVar) progVar.data = nextLvl;
+        }
+      }
+
+      var goVar = runtime.getEventVariableByName('gameOver');
+      if (goVar) goVar.data = 1;
+
       if (window.c2_callFunction) {
         window.c2_callFunction("win", []);
       }
@@ -374,9 +381,10 @@
   }
 
   /**
-   * Accurate Stuck Pipe Finder:
-   * Traces the solution path from Start Destin to End Destin using cell.targetAngle.
-   * Returns the FIRST pipe where the player's current orientation breaks the flow.
+   * Accurate Step-by-Step Stuck Pipe Finder:
+   * Follows the solution path from Start Destin to End Destin.
+   * Returns the FIRST pipe where the player's current orientation breaks the flow,
+   * always advancing the player forward without dragging them elsewhere.
    */
   function findStuckPipe(runtime) {
     var data = buildBoard(runtime);
@@ -386,10 +394,11 @@
     var startInfo = data.startInfo;
     var endInfo = data.endInfo;
 
+    // 1. Build precomputed solution path from start to end
     var curKey = startInfo.cell;
     var curEntry = startInfo.port;
     var maxSteps = Object.keys(board).length * 4;
-    var solutionTrace = [];
+    var solPath = [];
 
     for (var step = 0; step < maxSteps; step++) {
       var cell = board[curKey];
@@ -398,7 +407,7 @@
       var exitPort = getConnectedExitPort(cell.frame, cell.targetAngle, curEntry);
       if (exitPort === null) break;
 
-      solutionTrace.push({ key: curKey, entry: curEntry, exit: exitPort, cell: cell });
+      solPath.push({ key: curKey, entry: curEntry, exit: exitPort, target: cell.targetAngle, inst: cell.inst });
 
       if (curKey === endInfo.cell && exitPort === endInfo.port) {
         break;
@@ -410,19 +419,18 @@
       curEntry = OPPOSITE[exitPort];
     }
 
-    for (var i = 0; i < solutionTrace.length; i++) {
-      var item = solutionTrace[i];
-      var cCell = board[item.key];
-      var curExit = getConnectedExitPort(cCell.frame, cCell.angle, item.entry);
-      if (curExit !== item.exit) {
-        return cCell.inst;
-      }
-    }
+    if (solPath.length === 0) return null;
 
-    for (var k in board) {
-      var bCell = board[k];
-      if (bCell.isNeeded === 1 && !isPipeOrientationCorrect(bCell)) {
-        return bCell.inst;
+    // 2. Scan along solution path: find the FIRST pipe where player's live rotation does NOT connect entry to exit!
+    for (var i = 0; i < solPath.length; i++) {
+      var item = solPath[i];
+      var liveCell = board[item.key];
+      var curExit = getConnectedExitPort(liveCell.frame, liveCell.angle, item.entry);
+      if (curExit !== item.exit) {
+        return {
+          inst: item.inst,
+          targetAngle: item.target
+        };
       }
     }
 
@@ -501,6 +509,17 @@
     if (runtime) runtime.redraw = true;
   }
 
+  // --- Banner Ad Trigger ---
+  function triggerBannerAd() {
+    try {
+      if (window.AndroidBridge && window.AndroidBridge.showBanner) {
+        window.AndroidBridge.showBanner();
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.adBridge) {
+        window.webkit.messageHandlers.adBridge.postMessage({ action: 'showBanner' });
+      }
+    } catch (e) {}
+  }
+
   // --- Level Layout Transition Handler ---
   function handleLayoutChange(runtime) {
     if (!runtime || !runtime.running_layout) return;
@@ -519,6 +538,7 @@
     positionTopbar();
     updateLevelPageNav();
     updateC2MusicText();
+    triggerBannerAd();
   }
 
   // --- Use Hint Action ---
@@ -533,16 +553,20 @@
     var currentLvlName = runtime.running_layout.name;
     if (!currentLvlName || currentLvlName.indexOf('Level') !== 0) return;
 
-    var stuckPipe = findStuckPipe(runtime);
-    if (!stuckPipe) {
+    var stuckInfo = findStuckPipe(runtime);
+    if (!stuckInfo) {
       showToast('✨ TÜM HATLAR DOĞRU HİZADA!');
       return;
     }
 
     sanitizePipes(runtime);
 
-    var targetAngle = stuckPipe.instance_vars ? stuckPipe.instance_vars[1] : 0;
+    var stuckPipe = stuckInfo.inst;
+    var targetAngle = stuckInfo.targetAngle;
     stuckPipe.angle = toRadians(targetAngle);
+    if (stuckPipe.instance_vars && stuckPipe.instance_vars.length > 1) {
+      stuckPipe.instance_vars[1] = targetAngle;
+    }
 
     var baseFrame = stuckPipe.cur_frame > 3 ? (stuckPipe.cur_frame - 3) : stuckPipe.cur_frame;
     var redFrame = baseFrame + 3;
@@ -731,15 +755,9 @@
     container.id = 'linovia-hud-container';
 
     container.innerHTML = [
-      '<div class="linovia-topbar" style="display:none;">',
-      '  <div class="linovia-level-pill">',
-      '    <span class="linovia-pill-dot"></span>',
-      '    <span class="linovia-pill-text" id="linovia-level-text">BÖLÜM 1 / 100</span>',
-      '  </div>',
-      '  <div class="linovia-hint-btn" id="linovia-hint-trigger">',
-      '    <span class="linovia-hint-icon">💡</span>',
-      '    <span class="linovia-hint-count" id="linovia-hint-count">10</span>',
-      '  </div>',
+      '<div class="linovia-hint-btn" id="linovia-hint-trigger" style="display:none;">',
+      '  <span class="linovia-hint-icon">💡</span>',
+      '  <span class="linovia-hint-count" id="linovia-hint-count">10</span>',
       '</div>',
       '<div class="linovia-toast" id="linovia-toast"></div>',
       '<div class="linovia-level-nav" id="linovia-level-nav" style="display:none;">',
@@ -755,7 +773,6 @@
     document.body.appendChild(container);
 
     hudEl = container;
-    levelPillEl = document.getElementById('linovia-level-text');
     hintBtnEl = document.getElementById('linovia-hint-trigger');
     toastEl = document.getElementById('linovia-toast');
     levelNavEl = document.getElementById('linovia-level-nav');
@@ -785,14 +802,12 @@
   }
 
   /**
-   * Position Topbar safely below Construct 2 top buttons:
-   * btn_home (90, 90), btn_restart (255, 90), btn_pause (990, 90).
-   * They end at Y=165 in canvas coordinates.
-   * Placing topbar at canvas Y=190 ensures ZERO overlap with pause or home!
+   * Position Hint Button safely below Construct 2 top pause button:
+   * btn_pause is at (990, 90) ending at Y=165 in canvas coordinates.
+   * Placing hint button at canvas Y=245 ensures zero overlap and comfortable touch target!
    */
   function positionTopbar() {
-    var topbar = document.querySelector('.linovia-topbar');
-    if (!topbar) return;
+    if (!hintBtnEl) return;
     var canvas = document.getElementById('c2canvas');
     if (!canvas) return;
 
@@ -800,13 +815,11 @@
     var scale = rect.height / 1920.0;
     var scaleX = rect.width / 1080.0;
 
-    var topPx = rect.top + (185.0 * scale);
-    var leftPx = rect.left + (40.0 * scaleX);
-    var widthPx = rect.width - (80.0 * scaleX);
+    var topPx = rect.top + (245.0 * scale);
+    var rightPx = (window.innerWidth - rect.right) + (35.0 * scaleX);
 
-    topbar.style.top = topPx + 'px';
-    topbar.style.left = leftPx + 'px';
-    topbar.style.width = widthPx + 'px';
+    hintBtnEl.style.top = topPx + 'px';
+    hintBtnEl.style.right = Math.max(16, rightPx) + 'px';
   }
 
   function positionLevelNav() {
@@ -881,7 +894,53 @@
       startX = e.clientX;
       startY = e.clientY;
       startTime = Date.now();
-    }, { passive: true });
+
+      var runtime = getRuntime();
+      if (!runtime || !runtime.running_layout || runtime.running_layout.name !== 'Main') return;
+
+      var isLevels = false;
+      if (runtime.running_layout.layers) {
+        for (var i = 0; i < runtime.running_layout.layers.length; i++) {
+          var lyr = runtime.running_layout.layers[i];
+          if (lyr.name === 'Levels' && lyr.visible) {
+            isLevels = true;
+            break;
+          }
+        }
+      }
+      if (!isLevels) return;
+
+      var canvas = document.getElementById('c2canvas');
+      if (!canvas) return;
+
+      var rect = canvas.getBoundingClientRect();
+      var scaleX = rect.width / 1080.0;
+      var scaleY = rect.height / 1920.0;
+      var canvasX = (e.clientX - rect.left) / scaleX;
+      var canvasY = (e.clientY - rect.top) / scaleY;
+
+      var iconType = runtime.types_by_index[34];
+      if (!iconType || !iconType.instances) return;
+      var curProg = parseInt(localStorage.getItem('yellowpipes_strg') || '1', 10);
+      if (isNaN(curProg) || curProg < 1) curProg = 1;
+
+      for (var j = 0; j < iconType.instances.length; j++) {
+        var inst = iconType.instances[j];
+        var hw = (inst.width || 120) * 0.55;
+        var hh = (inst.height || 120) * 0.55;
+        if (canvasX >= inst.x - hw && canvasX <= inst.x + hw &&
+            canvasY >= inst.y - hh && canvasY <= inst.y + hh) {
+          var lvlNum = (inst.instance_vars && inst.instance_vars.length > 1) ? inst.instance_vars[1] : 1;
+          if (lvlNum > curProg) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            showToast('🔒 BÖLÜM ' + lvlNum + ' KİLİTLİ! ÖNCEKİ BÖLÜMLERİ GEÇİN.');
+            playClickSound();
+            return;
+          }
+        }
+      }
+    }, true);
 
     window.addEventListener('pointerup', function (e) {
       var runtime = getRuntime();
@@ -968,16 +1027,13 @@
     }
 
     var runtime = getRuntime();
-    var topbar = document.querySelector('.linovia-topbar');
-    if (topbar && runtime && runtime.running_layout) {
+    if (hintBtnEl && runtime && runtime.running_layout) {
       var name = runtime.running_layout.name;
       if (name && name.indexOf('Level') === 0) {
-        var num = parseInt(name.replace('Level', ''), 10);
-        levelPillEl.textContent = 'BÖLÜM ' + num + ' / 100';
-        topbar.style.display = 'flex';
+        hintBtnEl.style.display = 'flex';
         positionTopbar();
       } else {
-        topbar.style.display = 'none';
+        hintBtnEl.style.display = 'none';
       }
     }
   }
@@ -1082,6 +1138,7 @@
   function init() {
     createCinematicSplash();
     createHud();
+    triggerBannerAd();
 
     setInterval(function () {
       var runtime = getRuntime();
