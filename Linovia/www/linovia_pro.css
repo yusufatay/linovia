@@ -1,0 +1,375 @@
+/* Linovia Pro Styling - Deep Forest Slate & Emerald Theme */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap');
+
+#linovia-hud-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1000;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+/* =========================================================
+   CINEMATIC OPENING SPLASH SCREEN
+   ========================================================= */
+.linovia-splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at center, #142820 0%, #0d1a15 65%, #070e0b 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999999;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), filter 0.75s ease;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.linovia-splash-screen.linovia-splash-warp {
+  opacity: 0;
+  transform: scale(1.08);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.linovia-splash-bg-grid {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: 
+    linear-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px;
+  transform: perspective(600px) rotateX(45deg);
+  animation: splashGridDrift 22s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes splashGridDrift {
+  0% { transform: perspective(600px) rotateX(45deg) translateY(0); }
+  100% { transform: perspective(600px) rotateX(45deg) translateY(48px); }
+}
+
+.linovia-splash-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+}
+
+.linovia-splash-badge-wrap {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.linovia-splash-aura {
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(5, 150, 105, 0.15) 50%, transparent 70%);
+  filter: blur(20px);
+  animation: splashAuraPulse 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes splashAuraPulse {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  100% { transform: scale(1.15); opacity: 1; }
+}
+
+.linovia-splash-logo-img {
+  position: relative;
+  width: 165px;
+  height: 165px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 25px rgba(16, 185, 129, 0.65));
+  animation: splashFloatHero 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes splashFloatHero {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-10px); }
+}
+
+.linovia-splash-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  color: #FFFFFF;
+  text-shadow: 0 0 20px rgba(16, 185, 129, 0.8), 0 0 40px rgba(5, 150, 105, 0.5);
+  margin-bottom: 6px;
+  text-indent: 12px;
+}
+
+.linovia-splash-tagline {
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #6EE7B7;
+  text-shadow: 0 0 10px rgba(110, 231, 183, 0.4);
+  margin-bottom: 32px;
+  text-transform: uppercase;
+}
+
+.linovia-splash-loader-wrap {
+  width: 240px;
+  height: 6px;
+  background: rgba(18, 30, 25, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 9999px;
+  overflow: hidden;
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.6);
+  margin-bottom: 14px;
+}
+
+.linovia-splash-loader-bar {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #10B981, #34D399, #A7F3D0);
+  box-shadow: 0 0 12px #34D399;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.linovia-splash-status {
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: #A7F3D0;
+  opacity: 0.85;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* =========================================================
+   TOP BAR OVERLAY (Positioned clearly below top buttons)
+   ========================================================= */
+.linovia-topbar {
+  position: absolute;
+  top: 88px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: auto;
+  z-index: 1000;
+}
+
+/* Level Indicator Badge */
+.linovia-level-pill {
+  background: rgba(18, 30, 25, 0.9);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 15px rgba(16, 185, 129, 0.15);
+  padding: 8px 18px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.linovia-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 8px #10B981;
+  animation: linoviaPulse 2s infinite ease-in-out;
+}
+
+.linovia-pill-text {
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Hint Button */
+.linovia-hint-btn {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.55));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(16, 185, 129, 0.65);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 18px rgba(16, 185, 129, 0.25);
+  padding: 8px 18px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.linovia-hint-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.5), rgba(5, 150, 105, 0.75));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 0 25px rgba(16, 185, 129, 0.45);
+}
+
+.linovia-hint-btn:active {
+  transform: scale(0.95);
+}
+
+.linovia-hint-btn.ad-mode {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(220, 38, 38, 0.55));
+  border-color: rgba(239, 68, 68, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(239, 68, 68, 0.4);
+  animation: adPulse 2.5s infinite;
+}
+
+.linovia-hint-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.linovia-hint-count {
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Toast Notifications */
+.linovia-toast {
+  position: absolute;
+  top: 155px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  opacity: 0;
+  background: rgba(18, 30, 25, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid #10B981;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 25px rgba(16, 185, 129, 0.3);
+  padding: 12px 24px;
+  border-radius: 14px;
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2000;
+  text-align: center;
+}
+
+.linovia-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* Animations */
+@keyframes linoviaPulse {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes adPulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 15px rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 0 30px rgba(239, 68, 68, 0.65); transform: scale(1.03); }
+}
+
+/* Level Page Navigation Overlay (On Levels Screen) */
+.linovia-level-nav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: auto;
+  z-index: 1000;
+}
+
+.linovia-nav-arrow {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(18, 30, 25, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(16, 185, 129, 0.2);
+  color: #10B981;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.linovia-nav-arrow:hover:not(:disabled) {
+  transform: scale(1.12);
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #10B981;
+  color: #FFFFFF;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.linovia-nav-arrow:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.linovia-nav-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
+}
+
+.linovia-nav-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.linovia-nav-title {
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.linovia-nav-subtitle {
+  color: #10B981;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+}

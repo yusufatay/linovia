@@ -1,0 +1,27 @@
+name: Linovia
+options:
+  bundleIdPrefix: com
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+targets:
+  Linovia:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Linovia
+        excludes:
+          - "www"
+      - path: Linovia/www
+        buildPhase: resources
+        type: folder
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.linovia
+      INFOPLIST_FILE: Linovia/Info.plist
+      MARKETING_VERSION: "1.0.0"
+      CURRENT_PROJECT_VERSION: "1"
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      TARGETED_DEVICE_FAMILY: "1,2"
+      ENABLE_BITCODE: NO
+      SWIFT_VERSION: "5.0"
