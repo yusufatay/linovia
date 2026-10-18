@@ -8,6 +8,7 @@ import StoreKit
 class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
 
     private var webView: WKWebView!
+    private var bannerContainer: UIView!
 
     override var prefersStatusBarHidden: Bool {
         return true
@@ -19,7 +20,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.063, green: 0.102, blue: 0.086, alpha: 1.0)
+        view.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
 
         setupAudioSession()
         setupWebView()
@@ -27,9 +28,16 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         loadGame()
     }
 
+    private var hasInitializedAds = false
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if let banner = UnifiedAdManager.shared.bannerAdView {
+        if let container = bannerContainer {
+            view.bringSubviewToFront(container)
+            if let banner = UnifiedAdManager.shared.bannerAdView {
+                container.bringSubviewToFront(banner)
+            }
+        } else if let banner = UnifiedAdManager.shared.bannerAdView {
             view.bringSubviewToFront(banner)
         }
     }
@@ -117,7 +125,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
-        let bannerContainer = UIView()
+        bannerContainer = UIView()
         bannerContainer.translatesAutoresizingMaskIntoConstraints = false
         bannerContainer.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
         view.addSubview(bannerContainer)
@@ -166,19 +174,37 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
 
     // MARK: - ATT Permission & Ads Initialization
     private func requestTrackingAndInitAds() {
+        guard !hasInitializedAds else { return }
+
+        // Fallback timer: guarantees LevelPlay ads initialize even if ATT dialog is suppressed or drops completion
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self = self, !self.hasInitializedAds else { return }
+            print("[ADS] ATT fallback timer fired, initializing ads now.")
+            self.hasInitializedAds = true
+            self.initAds()
+        }
+
         if #available(iOS 14, *) {
-            ATTrackingManager.requestTrackingAuthorization { [weak self] status in
-                DispatchQueue.main.async {
-                    self?.initAds()
+            // A 0.4s delay ensures the window hierarchy is in UIApplicationStateActive before requesting ATT
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                guard let self = self, !self.hasInitializedAds else { return }
+                ATTrackingManager.requestTrackingAuthorization { [weak self] status in
+                    DispatchQueue.main.async {
+                        guard let self = self, !self.hasInitializedAds else { return }
+                        self.hasInitializedAds = true
+                        print("[ADS] ATT permission status: \(status.rawValue)")
+                        self.initAds()
+                    }
                 }
             }
         } else {
+            hasInitializedAds = true
             initAds()
         }
     }
 
     private func initAds() {
-        UnifiedAdManager.shared.initAds(viewController: self)
+        UnifiedAdManager.shared.initAds(viewController: self, bannerContainer: bannerContainer)
     }
 
     // MARK: - WKScriptMessageHandler

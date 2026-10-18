@@ -20,6 +20,7 @@ final class UnifiedAdManager: NSObject {
     private var rewardedLoadTimeoutWorkItem: DispatchWorkItem?
 
     private weak var presentingViewController: UIViewController?
+    private weak var bannerContainerView: UIView?
 
     private var isBannerLoading = false
     private var isBannerLoaded = false
@@ -34,14 +35,12 @@ final class UnifiedAdManager: NSObject {
         super.init()
     }
 
-    func initAds(viewController: UIViewController) {
+    func initAds(viewController: UIViewController, bannerContainer: UIView? = nil) {
         self.presentingViewController = viewController
+        self.bannerContainerView = bannerContainer
         self.isBannerRequested = true
 
-        initialize { [weak self] in
-            guard let self = self else { return }
-            self.loadBanner()
-        }
+        initialize()
     }
 
     func initialize(completion: (() -> Void)? = nil) {
@@ -153,7 +152,7 @@ final class UnifiedAdManager: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWork)
     }
 
-    // MARK: - Banner Ad (Direct View Mounting without Wrapper Containers)
+    // MARK: - Banner Ad (Mounted cleanly into bannerContainerView)
     func loadBanner() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -175,56 +174,79 @@ final class UnifiedAdManager: NSObject {
 
             if self.isBannerLoaded, let banner = self.bannerAdView {
                 banner.isHidden = false
-                vc.view.bringSubviewToFront(banner)
+                if let container = self.bannerContainerView {
+                    container.bringSubviewToFront(banner)
+                } else {
+                    vc.view.bringSubviewToFront(banner)
+                }
                 return
             }
 
             self.isBannerLoading = true
             self.cancelBannerRetry()
 
-            if self.bannerAdView == nil {
-                let bannerSize = LPMAdSize.banner()
-                let config = LPMBannerAdViewConfigBuilder()
-                    .set(adSize: bannerSize)
-                    .build()
+            // Safely destroy and remove failed/previous view for clean retry
+            if let oldBanner = self.bannerAdView {
+                oldBanner.destroy()
+                oldBanner.removeFromSuperview()
+                self.bannerAdView = nil
+            }
 
-                let handler = BannerDelegateHandler(manager: self)
-                self.bannerDelegate = handler
-                let bannerView = LPMBannerAdView(adUnitId: AdConfig.bannerId, config: config)
-                bannerView.setDelegate(handler)
-                bannerView.backgroundColor = .clear
-                self.bannerAdView = bannerView
+            let bannerSize = LPMAdSize.banner()
+            let config = LPMBannerAdViewConfigBuilder()
+                .set(adSize: bannerSize)
+                .build()
 
-                bannerView.translatesAutoresizingMaskIntoConstraints = false
-                vc.view.addSubview(bannerView)
-                vc.view.bringSubviewToFront(bannerView)
+            let handler = BannerDelegateHandler(manager: self)
+            self.bannerDelegate = handler
+            let bannerView = LPMBannerAdView(adUnitId: AdConfig.bannerId, config: config)
+            bannerView.delegate = handler
+            bannerView.backgroundColor = .clear
+            self.bannerAdView = bannerView
 
+            bannerView.translatesAutoresizingMaskIntoConstraints = false
+            let targetContainer: UIView = self.bannerContainerView ?? vc.view
+
+            targetContainer.addSubview(bannerView)
+            targetContainer.bringSubviewToFront(bannerView)
+
+            if targetContainer === self.bannerContainerView {
                 NSLayoutConstraint.activate([
-                    bannerView.centerXAnchor.constraint(equalTo: vc.view.centerXAnchor),
-                    bannerView.bottomAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.bottomAnchor),
+                    bannerView.centerXAnchor.constraint(equalTo: targetContainer.centerXAnchor),
+                    bannerView.centerYAnchor.constraint(equalTo: targetContainer.centerYAnchor),
                     bannerView.widthAnchor.constraint(equalToConstant: 320),
                     bannerView.heightAnchor.constraint(equalToConstant: 50)
                 ])
-            } else if let banner = self.bannerAdView {
-                banner.isHidden = false
-                vc.view.bringSubviewToFront(banner)
+            } else {
+                NSLayoutConstraint.activate([
+                    bannerView.centerXAnchor.constraint(equalTo: targetContainer.centerXAnchor),
+                    bannerView.bottomAnchor.constraint(equalTo: targetContainer.safeAreaLayoutGuide.bottomAnchor),
+                    bannerView.widthAnchor.constraint(equalToConstant: 320),
+                    bannerView.heightAnchor.constraint(equalToConstant: 50)
+                ])
             }
 
             print("[ADS] Requesting LevelPlay Banner load for adUnitId: \(AdConfig.bannerId)...")
-            self.bannerAdView?.loadAd(with: vc)
+            bannerView.loadAd(with: vc)
         }
     }
 
     func showBanner() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            if let banner = self.bannerAdView, let vc = self.presentingViewController {
+            if let container = self.bannerContainerView {
+                container.isHidden = false
+                container.superview?.bringSubviewToFront(container)
+                if let banner = self.bannerAdView {
+                    banner.isHidden = false
+                    container.bringSubviewToFront(banner)
+                }
+            } else if let banner = self.bannerAdView, let vc = self.presentingViewController {
                 banner.isHidden = false
                 vc.view.bringSubviewToFront(banner)
-                if !self.isBannerLoaded && !self.isBannerLoading {
-                    self.loadBanner()
-                }
-            } else {
+            }
+
+            if !self.isBannerLoaded && !self.isBannerLoading {
                 self.loadBanner()
             }
         }
@@ -233,6 +255,7 @@ final class UnifiedAdManager: NSObject {
     func hideBanner() {
         DispatchQueue.main.async { [weak self] in
             self?.bannerAdView?.isHidden = true
+            self?.bannerContainerView?.isHidden = true
         }
     }
 
@@ -280,9 +303,15 @@ final class UnifiedAdManager: NSObject {
         cancelBannerRetry()
         print("[ADS] Banner loaded successfully!")
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, let banner = self.bannerAdView, let vc = self.presentingViewController else { return }
+            guard let self = self, let banner = self.bannerAdView else { return }
             banner.isHidden = false
-            vc.view.bringSubviewToFront(banner)
+            if let container = self.bannerContainerView {
+                container.isHidden = false
+                container.superview?.bringSubviewToFront(container)
+                container.bringSubviewToFront(banner)
+            } else if let vc = self.presentingViewController {
+                vc.view.bringSubviewToFront(banner)
+            }
         }
     }
 

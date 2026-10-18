@@ -438,6 +438,9 @@
   }
 
   // --- Level Completion Handler ---
+  var levelsClearedSinceAd = parseInt(localStorage.getItem('linovia_cleared_since_ad') || '0', 10);
+  var lastInterstitialTime = parseInt(localStorage.getItem('linovia_last_ad_time') || '0', 10);
+
   function handleLevelWon(lvlName) {
     if (lastLevelWon === lvlName) return;
     lastLevelWon = lvlName;
@@ -447,11 +450,27 @@
     updateHud();
     showToast('🎉 BÖLÜM TAMAMLANDI! +1 İPUCU KAZANDIN!');
 
-    // Show Interstitial ad every 3 levels or on clear via AndroidBridge
-    if (window.AndroidBridge && window.AndroidBridge.showInterstitial) {
-      window.AndroidBridge.showInterstitial();
-    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.showInterstitial) {
-      window.webkit.messageHandlers.showInterstitial.postMessage('level_clear');
+    // Interstitial Ad Logic: Every 3 levels & minimum 45s cooldown
+    levelsClearedSinceAd++;
+    localStorage.setItem('linovia_cleared_since_ad', levelsClearedSinceAd.toString());
+
+    var now = Date.now();
+    var cooldownPassed = (now - lastInterstitialTime) >= 45000;
+
+    console.log('[Linovia Ads] Level cleared count: ' + levelsClearedSinceAd + ', Cooldown passed: ' + cooldownPassed);
+
+    if (levelsClearedSinceAd >= 3 && cooldownPassed) {
+      console.log('[Linovia Ads] Triggering Interstitial Ad (every 3 levels rule met)...');
+      levelsClearedSinceAd = 0;
+      lastInterstitialTime = now;
+      localStorage.setItem('linovia_cleared_since_ad', '0');
+      localStorage.setItem('linovia_last_ad_time', now.toString());
+
+      if (window.AndroidBridge && window.AndroidBridge.showInterstitial) {
+        window.AndroidBridge.showInterstitial();
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.adBridge) {
+        window.webkit.messageHandlers.adBridge.postMessage({ action: 'showInterstitial' });
+      }
     }
   }
 
