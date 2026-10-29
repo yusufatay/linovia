@@ -7,6 +7,7 @@ import AVFoundation
 class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHandler {
 
     private var webView: WKWebView!
+    private var bannerContainer: UIView!
     private var hasInitializedAds = false
 
     override var prefersStatusBarHidden: Bool {
@@ -19,7 +20,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.063, green: 0.102, blue: 0.086, alpha: 1.0)
+        view.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
 
         setupAudioSession()
         setupWebView()
@@ -29,8 +30,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if let banner = UnifiedAdManager.shared.bannerAdView {
-            view.bringSubviewToFront(banner)
+        if let container = bannerContainer {
+            view.bringSubviewToFront(container)
+            if let banner = UnifiedAdManager.shared.bannerAdView {
+                container.bringSubviewToFront(banner)
+            }
         }
     }
 
@@ -49,7 +53,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         }
     }
 
-    // MARK: - WebView Setup (Full Screen)
+    // MARK: - WebView Setup & Dedicated Banner Container
     private func setupWebView() {
         let contentController = WKUserContentController()
 
@@ -117,11 +121,37 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
+        // Dedicated Banner Container (Reserved 50pt slot + Home Indicator padding)
+        bannerContainer = UIView()
+        bannerContainer.translatesAutoresizingMaskIntoConstraints = false
+        bannerContainer.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
+
+        // Subtle neon top border for clean separation
+        let topBorder = UIView()
+        topBorder.translatesAutoresizingMaskIntoConstraints = false
+        topBorder.backgroundColor = UIColor(red: 0.063, green: 0.725, blue: 0.506, alpha: 0.3)
+        bannerContainer.addSubview(topBorder)
+
+        view.addSubview(bannerContainer)
+
         NSLayoutConstraint.activate([
+            // Game webview sits directly above the banner container
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            webView.bottomAnchor.constraint(equalTo: bannerContainer.topAnchor),
+
+            // Top accent border
+            topBorder.topAnchor.constraint(equalTo: bannerContainer.topAnchor),
+            topBorder.leadingAnchor.constraint(equalTo: bannerContainer.leadingAnchor),
+            topBorder.trailingAnchor.constraint(equalTo: bannerContainer.trailingAnchor),
+            topBorder.heightAnchor.constraint(equalToConstant: 1),
+
+            // Banner container covers exactly 50pt above safe-area bottom down to physical screen edge
+            bannerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bannerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bannerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
+            bannerContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
@@ -186,7 +216,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
     }
 
     private func initAds() {
-        UnifiedAdManager.shared.initAds(viewController: self)
+        UnifiedAdManager.shared.initAds(viewController: self, bannerContainer: bannerContainer)
     }
 
     // MARK: - WKScriptMessageHandler

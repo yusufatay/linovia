@@ -373,7 +373,6 @@
       if (window.c2_callFunction) {
         window.c2_callFunction("win", []);
       }
-      handleLevelWon(layoutName);
       return true;
     }
 
@@ -438,47 +437,51 @@
   }
 
   // --- Level Completion Handler ---
+  var completedLevels = {};
   var levelsClearedSinceAd = parseInt(localStorage.getItem('linovia_cleared_since_ad') || '0', 10);
-  var lastInterstitialTime = parseInt(localStorage.getItem('linovia_last_ad_time') || '0', 10);
 
   function handleLevelWon(lvlName) {
-    if (lastLevelWon === lvlName) return;
-    lastLevelWon = lvlName;
+    if (!lvlName) return;
+    var num = parseInt(lvlName.toString().replace(/\D/g, ''), 10);
+    if (isNaN(num) || num < 1) return;
+    var normKey = 'Level_' + num;
+
+    // Strict debounce: never reward or count the same level more than once!
+    if (completedLevels[normKey]) {
+      return;
+    }
+    completedLevels[normKey] = true;
+    console.log('[Linovia Pro] Level won verified: ' + normKey);
 
     hints += 1;
     localStorage.setItem('linovia_hints', hints);
     updateHud();
     showToast('🎉 BÖLÜM TAMAMLANDI! +1 İPUCU KAZANDIN!');
 
-    // Interstitial Ad Logic: Every 3 levels & minimum 30s cooldown
+    // Interstitial Ad Logic: Every 3 levels
     levelsClearedSinceAd++;
     localStorage.setItem('linovia_cleared_since_ad', levelsClearedSinceAd.toString());
 
-    var now = Date.now();
-    var cooldownPassed = (now - lastInterstitialTime) >= 30000;
-
-    console.log('[Linovia Ads] Level won: ' + lvlName + ' | Count: ' + levelsClearedSinceAd + ' | Cooldown passed: ' + cooldownPassed);
+    console.log('[Linovia Ads] Levels cleared count: ' + levelsClearedSinceAd);
 
     if (levelsClearedSinceAd >= 3) {
-      if (cooldownPassed) {
-        console.log('[Linovia Ads] Triggering Interstitial Ad (every 3 levels rule met)...');
-        levelsClearedSinceAd = 0;
-        lastInterstitialTime = now;
-        localStorage.setItem('linovia_cleared_since_ad', '0');
-        localStorage.setItem('linovia_last_ad_time', now.toString());
-
-        if (window.AndroidBridge && window.AndroidBridge.showInterstitial) {
-          window.AndroidBridge.showInterstitial();
-        } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.adBridge) {
-          window.webkit.messageHandlers.adBridge.postMessage({ action: 'showInterstitial' });
-        }
-      } else {
-        console.log('[Linovia Ads] 3 levels cleared, waiting for cooldown (' + Math.round((30000 - (now - lastInterstitialTime)) / 1000) + 's remaining). Will trigger next level.');
+      console.log('[Linovia Ads] Requesting Interstitial Ad (every 3 levels rule met)...');
+      if (window.AndroidBridge && window.AndroidBridge.showInterstitial) {
+        window.AndroidBridge.showInterstitial();
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.adBridge) {
+        window.webkit.messageHandlers.adBridge.postMessage({ action: 'showInterstitial' });
       }
     }
   }
 
-  // --- Persistent Pipe Sanitizer ---
+  window.onAdClosed = function (adType) {
+    if (adType === 'interstitial') {
+      console.log('[Linovia Ads] Interstitial closed event received. Resetting cleared counter.');
+      levelsClearedSinceAd = 0;
+      localStorage.setItem('linovia_cleared_since_ad', '0');
+    }
+  };
+// --- Persistent Pipe Sanitizer ---
   function sanitizePipes(runtime) {
     if (!runtime || !runtime.running_layout) return;
     var currentLvlName = runtime.running_layout.name;
@@ -553,17 +556,6 @@
     currentActiveLayout = name;
     console.log('[Linovia Pro] Layout changed from ' + prevLayout + ' to ' + name);
 
-    // If leaving a Level layout towards the next level or win screen
-    if (prevLayout && prevLayout.indexOf('Level') === 0 && name !== prevLayout) {
-      if (name.indexOf('Level') === 0 || name === 'Win') {
-        console.log('[Linovia Pro] Level transition detected from ' + prevLayout + ' to ' + name);
-        handleLevelWon(prevLayout);
-      }
-    }
-
-    if (name !== lastLevelWon) {
-      lastLevelWon = null;
-    }
 
     sanitizePipes(runtime);
     updateHud();
@@ -669,16 +661,17 @@
   // --- Rewarded Ad Integration ---
   function triggerRewardedAd() {
     console.log('[Linovia Pro] Triggering Rewarded Video Ad for +3 Hints...');
+    showToast('🎬 REKLAM YÜKLENİYOR... LÜTFEN BEKLEYİN');
+
     if (window.AndroidBridge && window.AndroidBridge.showRewarded) {
       window.AndroidBridge.showRewarded('hint');
     } else if (
       window.webkit &&
       window.webkit.messageHandlers &&
-      window.webkit.messageHandlers.showRewarded
+      window.webkit.messageHandlers.adBridge
     ) {
-      window.webkit.messageHandlers.showRewarded.postMessage('hint');
+      window.webkit.messageHandlers.adBridge.postMessage({ action: 'showRewarded', rewardType: 'hint' });
     } else {
-      showToast('🎬 REKLAM İZLENİYOR... (+3 İPUCU)');
       setTimeout(function () {
         window.onLinoviaAdRewarded(true, 'hint');
       }, 1500);
@@ -686,11 +679,13 @@
   }
 
   window.onLinoviaAdRewarded = function (success, tag) {
-    if (success && (tag === 'hint' || !tag)) {
+    if (success) {
       hints += 3;
       localStorage.setItem('linovia_hints', hints);
       updateHud();
-      showToast('🎬 +3 İPUCU HESABINA YÜKLENDİ!');
+      showToast('🎁 +3 İPUCU KAZANDIN!');
+    } else {
+      showToast('⚠️ Reklam henüz hazır değil, lütfen birkaç saniye sonra tekrar deneyin.');
     }
   };
 
@@ -812,10 +807,22 @@
     pageTitleEl = document.getElementById('linovia-page-title');
     pageSubtitleEl = document.getElementById('linovia-page-subtitle');
 
-    hintBtnEl.addEventListener('click', function (e) {
-      e.stopPropagation();
+    var lastHintTap = 0;
+    function handleHintTap(e) {
+      var now = Date.now();
+      if (now - lastHintTap < 400) return;
+      lastHintTap = now;
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      playClickSound();
       useHint();
-    });
+    }
+
+    hintBtnEl.addEventListener('pointerup', handleHintTap);
+    hintBtnEl.addEventListener('touchend', handleHintTap);
+    hintBtnEl.addEventListener('click', handleHintTap);
 
     pagePrevBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -1172,8 +1179,8 @@
         var origCall = window.cr.plugins_.Function.prototype.acts.CallFunction;
         window.cr.plugins_.Function.prototype.acts.CallFunction = function (name_, params_) {
           var lower = (name_ || '').toLowerCase();
-          if (lower === 'win' || lower === 'end') {
-            console.log('[Linovia Pro] C2 CallFunction(' + lower + ') intercepted!');
+          if (lower === 'win') {
+            console.log('[Linovia Pro] C2 CallFunction(win) intercepted!');
             var rt = getRuntime();
             var lvlName = (rt && rt.running_layout) ? rt.running_layout.name : 'Level';
             handleLevelWon(lvlName);
@@ -1189,8 +1196,8 @@
   var origC2Call = window.c2_callFunction;
   window.c2_callFunction = function (name_, params_) {
     var lower = (name_ || '').toLowerCase();
-    if (lower === 'win' || lower === 'end') {
-      console.log('[Linovia Pro] window.c2_callFunction(' + lower + ') intercepted!');
+    if (lower === 'win') {
+      console.log('[Linovia Pro] window.c2_callFunction(win) intercepted!');
       var rt = getRuntime();
       var lvlName = (rt && rt.running_layout) ? rt.running_layout.name : 'Level';
       handleLevelWon(lvlName);
