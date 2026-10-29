@@ -1,14 +1,13 @@
 import UIKit
 import WebKit
 import AppTrackingTransparency
-import AdSupport
-import AVFoundation
 import StoreKit
+import AVFoundation
 
-class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
+class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHandler {
 
     private var webView: WKWebView!
-    private var bannerContainer: UIView!
+    private var hasInitializedAds = false
 
     override var prefersStatusBarHidden: Bool {
         return true
@@ -20,7 +19,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
+        view.backgroundColor = UIColor(red: 0.063, green: 0.102, blue: 0.086, alpha: 1.0)
 
         setupAudioSession()
         setupWebView()
@@ -28,16 +27,9 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         loadGame()
     }
 
-    private var hasInitializedAds = false
-
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if let container = bannerContainer {
-            view.bringSubviewToFront(container)
-            if let banner = UnifiedAdManager.shared.bannerAdView {
-                container.bringSubviewToFront(banner)
-            }
-        } else if let banner = UnifiedAdManager.shared.bannerAdView {
+        if let banner = UnifiedAdManager.shared.bannerAdView {
             view.bringSubviewToFront(banner)
         }
     }
@@ -57,7 +49,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         }
     }
 
-    // MARK: - WebView Setup (100% Fullscreen, Edge-to-Edge)
+    // MARK: - WebView Setup (Full Screen)
     private func setupWebView() {
         let contentController = WKUserContentController()
 
@@ -125,21 +117,11 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
-        bannerContainer = UIView()
-        bannerContainer.translatesAutoresizingMaskIntoConstraints = false
-        bannerContainer.backgroundColor = UIColor(red: 0.027, green: 0.055, blue: 0.043, alpha: 1.0)
-        view.addSubview(bannerContainer)
-
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: bannerContainer.topAnchor),
-
-            bannerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bannerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bannerContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            bannerContainer.heightAnchor.constraint(equalToConstant: 50)
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
@@ -204,7 +186,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
     }
 
     private func initAds() {
-        UnifiedAdManager.shared.initAds(viewController: self, bannerContainer: bannerContainer)
+        UnifiedAdManager.shared.initAds(viewController: self)
     }
 
     // MARK: - WKScriptMessageHandler

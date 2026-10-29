@@ -12,16 +12,21 @@ final class UnifiedAdManager: NSObject {
     public var bannerAdView: LPMBannerAdView?
 
     private var isInitialized = false
+
+    // Interstitial queuing state
+    private weak var pendingInterstitialViewController: UIViewController?
+    private var isWaitingForInterstitialLoad = false
+    private var interstitialLoadTimeoutWorkItem: DispatchWorkItem?
+
+    // Rewarded queuing state
     private var pendingRewardType = "default"
     private var rewardEarned = false
-
     private weak var pendingRewardedViewController: UIViewController?
     private var isWaitingForRewardedLoad = false
     private var rewardedLoadTimeoutWorkItem: DispatchWorkItem?
 
+    // Banner state
     private weak var presentingViewController: UIViewController?
-    private weak var bannerContainerView: UIView?
-
     private var isBannerLoading = false
     private var isBannerLoaded = false
     private var isBannerRequested = false
@@ -35,11 +40,9 @@ final class UnifiedAdManager: NSObject {
         super.init()
     }
 
-    func initAds(viewController: UIViewController, bannerContainer: UIView? = nil) {
+    func initAds(viewController: UIViewController) {
         self.presentingViewController = viewController
-        self.bannerContainerView = bannerContainer
         self.isBannerRequested = true
-
         initialize()
     }
 
@@ -93,9 +96,9 @@ final class UnifiedAdManager: NSObject {
         return interstitialAd?.isAdReady() ?? false
     }
 
-        // Minimum interval between interstitial ad presentations (pacing guard)
+    // Minimum interval between interstitial ad presentations (pacing guard)
     private var lastInterstitialShowTime: Date = Date.distantPast
-    private let minInterstitialInterval: TimeInterval = 40.0
+    private let minInterstitialInterval: TimeInterval = 35.0
 
     func showInterstitial(from viewController: UIViewController) {
         let elapsed = Date().timeIntervalSince(lastInterstitialShowTime)
@@ -104,14 +107,34 @@ final class UnifiedAdManager: NSObject {
             onInterstitialClosed?()
             return
         }
-        guard let ad = interstitialAd, ad.isAdReady() else {
-            print("[ADS] Interstitial not ready, requesting load...")
-            loadInterstitial()
-            onInterstitialClosed?()
+
+        // If ad is ready right now, show immediately
+        if let ad = interstitialAd, ad.isAdReady() {
+            print("[ADS] Interstitial ad is ready, showing immediately.")
+            self.isWaitingForInterstitialLoad = false
+            self.pendingInterstitialViewController = nil
+            self.interstitialLoadTimeoutWorkItem?.cancel()
+            lastInterstitialShowTime = Date()
+            ad.showAd(viewController: viewController, placementName: nil)
             return
         }
-        lastInterstitialShowTime = Date()
-        ad.showAd(viewController: viewController, placementName: nil)
+
+        // If ad is still loading, queue the request and wait up to 3 seconds
+        print("[ADS] Interstitial ad not ready yet, queuing request and waiting up to 3 seconds...")
+        self.pendingInterstitialViewController = viewController
+        self.isWaitingForInterstitialLoad = true
+        loadInterstitial()
+
+        interstitialLoadTimeoutWorkItem?.cancel()
+        let timeoutWork = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isWaitingForInterstitialLoad else { return }
+            print("[ADS] Interstitial ad wait timed out after 3 seconds.")
+            self.isWaitingForInterstitialLoad = false
+            self.pendingInterstitialViewController = nil
+            self.onInterstitialClosed?()
+        }
+        self.interstitialLoadTimeoutWorkItem = timeoutWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: timeoutWork)
     }
 
     // MARK: - Rewarded Ad
@@ -163,7 +186,7 @@ final class UnifiedAdManager: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWork)
     }
 
-    // MARK: - Banner Ad (Mounted cleanly into bannerContainerView)
+    // MARK: - Banner Ad (Clean mounting to root view)
     func loadBanner() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -183,81 +206,50 @@ final class UnifiedAdManager: NSObject {
                 return
             }
 
-            if self.isBannerLoaded, let banner = self.bannerAdView {
+            if self.bannerAdView == nil {
+                let bannerSize = LPMAdSize.banner()
+                let config = LPMBannerAdViewConfigBuilder()
+                    .set(adSize: bannerSize)
+                    .build()
+
+                let handler = BannerDelegateHandler(manager: self)
+                self.bannerDelegate = handler
+                let bannerView = LPMBannerAdView(adUnitId: AdConfig.bannerId, config: config)
+                bannerView.setDelegate(handler)
+                bannerView.backgroundColor = .clear
+                self.bannerAdView = bannerView
+
+                bannerView.translatesAutoresizingMaskIntoConstraints = false
+                vc.view.addSubview(bannerView)
+                vc.view.bringSubviewToFront(bannerView)
+
+                NSLayoutConstraint.activate([
+                    bannerView.centerXAnchor.constraint(equalTo: vc.view.centerXAnchor),
+                    bannerView.bottomAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.bottomAnchor),
+                    bannerView.widthAnchor.constraint(equalToConstant: 320),
+                    bannerView.heightAnchor.constraint(equalToConstant: 50)
+                ])
+            } else if let banner = self.bannerAdView {
                 banner.isHidden = false
-                if let container = self.bannerContainerView {
-                    container.bringSubviewToFront(banner)
-                } else {
-                    vc.view.bringSubviewToFront(banner)
-                }
-                return
+                vc.view.bringSubviewToFront(banner)
             }
 
             self.isBannerLoading = true
-            self.cancelBannerRetry()
-
-            // Safely destroy and remove failed/previous view for clean retry
-            if let oldBanner = self.bannerAdView {
-                oldBanner.destroy()
-                oldBanner.removeFromSuperview()
-                self.bannerAdView = nil
-            }
-
-            let bannerSize = LPMAdSize.banner()
-            let config = LPMBannerAdViewConfigBuilder()
-                .set(adSize: bannerSize)
-                .build()
-
-            let handler = BannerDelegateHandler(manager: self)
-            self.bannerDelegate = handler
-            let bannerView = LPMBannerAdView(adUnitId: AdConfig.bannerId, config: config)
-            bannerView.setDelegate(handler)
-            bannerView.backgroundColor = .clear
-            self.bannerAdView = bannerView
-
-            bannerView.translatesAutoresizingMaskIntoConstraints = false
-            let targetContainer: UIView = self.bannerContainerView ?? vc.view
-
-            targetContainer.addSubview(bannerView)
-            targetContainer.bringSubviewToFront(bannerView)
-
-            if targetContainer === self.bannerContainerView {
-                NSLayoutConstraint.activate([
-                    bannerView.centerXAnchor.constraint(equalTo: targetContainer.centerXAnchor),
-                    bannerView.centerYAnchor.constraint(equalTo: targetContainer.centerYAnchor),
-                    bannerView.widthAnchor.constraint(equalToConstant: 320),
-                    bannerView.heightAnchor.constraint(equalToConstant: 50)
-                ])
-            } else {
-                NSLayoutConstraint.activate([
-                    bannerView.centerXAnchor.constraint(equalTo: targetContainer.centerXAnchor),
-                    bannerView.bottomAnchor.constraint(equalTo: targetContainer.safeAreaLayoutGuide.bottomAnchor),
-                    bannerView.widthAnchor.constraint(equalToConstant: 320),
-                    bannerView.heightAnchor.constraint(equalToConstant: 50)
-                ])
-            }
-
             print("[ADS] Requesting LevelPlay Banner load for adUnitId: \(AdConfig.bannerId)...")
-            bannerView.loadAd(with: vc)
+            self.bannerAdView?.loadAd(with: vc)
         }
     }
 
     func showBanner() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            if let container = self.bannerContainerView {
-                container.isHidden = false
-                container.superview?.bringSubviewToFront(container)
-                if let banner = self.bannerAdView {
-                    banner.isHidden = false
-                    container.bringSubviewToFront(banner)
-                }
-            } else if let banner = self.bannerAdView, let vc = self.presentingViewController {
+            if let banner = self.bannerAdView, let vc = self.presentingViewController {
                 banner.isHidden = false
                 vc.view.bringSubviewToFront(banner)
-            }
-
-            if !self.isBannerLoaded && !self.isBannerLoading {
+                if !self.isBannerLoaded && !self.isBannerLoading {
+                    self.loadBanner()
+                }
+            } else {
                 self.loadBanner()
             }
         }
@@ -266,12 +258,36 @@ final class UnifiedAdManager: NSObject {
     func hideBanner() {
         DispatchQueue.main.async { [weak self] in
             self?.bannerAdView?.isHidden = true
-            self?.bannerContainerView?.isHidden = true
         }
     }
 
     // MARK: - Internal Handlers called by Delegates
+    fileprivate func handleInterstitialLoaded() {
+        print("[ADS] Interstitial loaded successfully.")
+        if isWaitingForInterstitialLoad, let vc = pendingInterstitialViewController, let ad = interstitialAd, ad.isAdReady() {
+            print("[ADS] Queued interstitial ad finished loading! Showing automatically now...")
+            isWaitingForInterstitialLoad = false
+            pendingInterstitialViewController = nil
+            interstitialLoadTimeoutWorkItem?.cancel()
+            lastInterstitialShowTime = Date()
+            ad.showAd(viewController: vc, placementName: nil)
+        }
+    }
+
+    fileprivate func handleInterstitialFailed() {
+        if isWaitingForInterstitialLoad {
+            print("[ADS] Interstitial ad failed while waiting.")
+            isWaitingForInterstitialLoad = false
+            pendingInterstitialViewController = nil
+            interstitialLoadTimeoutWorkItem?.cancel()
+            onInterstitialClosed?()
+        }
+    }
+
     fileprivate func handleInterstitialClosed() {
+        isWaitingForInterstitialLoad = false
+        pendingInterstitialViewController = nil
+        interstitialLoadTimeoutWorkItem?.cancel()
         onInterstitialClosed?()
         loadInterstitial()
     }
@@ -314,15 +330,9 @@ final class UnifiedAdManager: NSObject {
         cancelBannerRetry()
         print("[ADS] Banner loaded successfully!")
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, let banner = self.bannerAdView else { return }
+            guard let self = self, let banner = self.bannerAdView, let vc = self.presentingViewController else { return }
             banner.isHidden = false
-            if let container = self.bannerContainerView {
-                container.isHidden = false
-                container.superview?.bringSubviewToFront(container)
-                container.bringSubviewToFront(banner)
-            } else if let vc = self.presentingViewController {
-                vc.view.bringSubviewToFront(banner)
-            }
+            vc.view.bringSubviewToFront(banner)
         }
     }
 
@@ -360,11 +370,13 @@ private class InterstitialDelegateHandler: NSObject, LPMInterstitialAdDelegate {
     }
 
     func didLoadAd(with adInfo: LPMAdInfo) {
-        print("[ADS] Interstitial loaded successfully")
+        print("[ADS] Interstitial loaded successfully: \(adInfo)")
+        manager?.handleInterstitialLoaded()
     }
 
     func didFailToLoadAd(withAdUnitId adUnitId: String, error: Error) {
         print("[ADS] Interstitial load failed: \(error.localizedDescription)")
+        manager?.handleInterstitialFailed()
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             self?.manager?.loadInterstitial()
         }
@@ -399,7 +411,7 @@ private class RewardedDelegateHandler: NSObject, LPMRewardedAdDelegate {
     }
 
     func didLoadAd(with adInfo: LPMAdInfo) {
-        print("[ADS] Rewarded loaded successfully")
+        print("[ADS] Rewarded loaded successfully: \(adInfo)")
         manager?.handleRewardedLoaded()
     }
 
