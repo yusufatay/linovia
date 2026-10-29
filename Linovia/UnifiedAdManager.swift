@@ -93,13 +93,24 @@ final class UnifiedAdManager: NSObject {
         return interstitialAd?.isAdReady() ?? false
     }
 
+        // Minimum interval between interstitial ad presentations (pacing guard)
+    private var lastInterstitialShowTime: Date = Date.distantPast
+    private let minInterstitialInterval: TimeInterval = 40.0
+
     func showInterstitial(from viewController: UIViewController) {
+        let elapsed = Date().timeIntervalSince(lastInterstitialShowTime)
+        guard elapsed >= minInterstitialInterval else {
+            print("[ADS] Interstitial suppressed by pacing guard: \(Int(elapsed))s elapsed (min required: \(Int(minInterstitialInterval))s)")
+            onInterstitialClosed?()
+            return
+        }
         guard let ad = interstitialAd, ad.isAdReady() else {
             print("[ADS] Interstitial not ready, requesting load...")
             loadInterstitial()
             onInterstitialClosed?()
             return
         }
+        lastInterstitialShowTime = Date()
         ad.showAd(viewController: viewController, placementName: nil)
     }
 
@@ -200,7 +211,7 @@ final class UnifiedAdManager: NSObject {
             let handler = BannerDelegateHandler(manager: self)
             self.bannerDelegate = handler
             let bannerView = LPMBannerAdView(adUnitId: AdConfig.bannerId, config: config)
-            bannerView.delegate = handler
+            bannerView.setDelegate(handler)
             bannerView.backgroundColor = .clear
             self.bannerAdView = bannerView
 
